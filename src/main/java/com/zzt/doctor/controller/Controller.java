@@ -5,10 +5,11 @@ import com.sun.tools.attach.AgentInitializationException;
 import com.sun.tools.attach.AgentLoadException;
 import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
-import com.vip.vjtools.vjtop.data.PerfData;
+import com.sun.tools.jconsole.JConsoleContext;
 import com.zzt.doctor.entity.JInfo;
 import com.zzt.doctor.entity.VMDetail;
 import com.zzt.doctor.helper.VmConnector;
+import com.zzt.doctor.vm.ProxyClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,21 +18,16 @@ import sun.jvmstat.monitor.*;
 import sun.management.counter.Counter;
 import sun.tools.jconsole.LocalVirtualMachine;
 
-import javax.management.MalformedObjectNameException;
+import javax.management.*;
+import javax.management.openmbean.CompositeData;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
 import java.io.File;
 import java.io.IOException;
-import java.lang.management.GarbageCollectorMXBean;
-import java.lang.management.MemoryMXBean;
-import java.lang.management.MemoryUsage;
-import java.lang.management.RuntimeMXBean;
+import java.lang.management.*;
 import java.net.URISyntaxException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -44,6 +40,10 @@ public class Controller {
     private static final String LOCAL_CONNECTOR_ADDRESS_PROP = "com.sun.management.jmxremote.localConnectorAddress";
 
     private float KB = 1000;
+
+    public static void main(String[] args) throws IOException {
+
+    }
 
     @GetMapping("/jvms")
     public Object main() {
@@ -112,17 +112,54 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/memory")
-    public Object memory(@PathVariable("id") Integer pid) {
-        PerfData prefData = PerfData.connect(pid);
-        Map<String, Counter> counters = prefData.getAllCounters();
+    public Object memory(@PathVariable("id") Integer pid) throws IOException {
+        ArrayList<LocalVirtualMachine> localVirtualMachines = new ArrayList<>(LocalVirtualMachine.getAllVirtualMachines().values());
+        LocalVirtualMachine machine = localVirtualMachines.stream().filter(m -> m.vmid() == pid).findFirst().get();
+        ProxyClient proxyClient = ProxyClient.getProxyClient(machine);
+        if (proxyClient.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
+            proxyClient.connect(false);
+        }
 
-        HashMap<String, Object> map = new HashMap<>();
-        map.put("EdenUsed", getValue(counters, "sun.gc.generation.0.space.0.used") / KB / KB);
-        map.put("Survivor0Used", getValue(counters, "sun.gc.generation.0.space.1.used") / KB / KB);
-        map.put("Survivor1Used", getValue(counters, "sun.gc.generation.0.space.2.used") / KB / KB);
-        map.put("TenuredUsed", getValue(counters, "sun.gc.generation.1.space.0.used") / KB / KB);
-        map.put("PermUsed", getValue(counters, "sun.gc.generation.2.space.0.used") / KB / KB);
-        return map;
+        Map<ObjectName, MBeanInfo> mBeanMap = proxyClient.getMBeans("java.lang");
+
+        return mBeanMap.keySet().stream()
+            .filter(objectName -> "MemoryPool".equals(objectName.getKeyProperty("type")))
+            .map(objectName -> {
+                HashMap<String, Object> map = new HashMap<>();
+
+                map.put("name", objectName.getKeyProperty("name"));
+                // Heap or non-heap?
+                boolean isHeap = false;
+                try {
+                    AttributeList al = proxyClient.getAttributes(objectName, new String[]{"Type", "Usage", "UsageThreshold"});
+                    if (al.size() > 0) {
+                        isHeap = MemoryType.HEAP.name().equals(((Attribute) al.get(0)).getValue());
+                    }
+                    map.put("isHeap", isHeap);
+
+                    if (al.size() > 1) {
+                        CompositeData cd = (CompositeData) ((Attribute) al.get(1)).getValue();
+                        MemoryUsage mu = MemoryUsage.from(cd);
+                        map.put("Used", mu.getUsed() / KB / KB);
+                        map.put("Committed", mu.getCommitted() / KB / KB);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                return map;
+            }).collect(Collectors.toList());
+
+//        PerfData prefData = PerfData.connect(pid);
+//        Map<String, Counter> counters = prefData.getAllCounters();
+//
+//        HashMap<String, Object> map = new HashMap<>();
+//        map.put("EdenUsed", getValue(counters, "sun.gc.generation.0.space.0.used") / KB / KB);
+//        map.put("Survivor0Used", getValue(counters, "sun.gc.generation.0.space.1.used") / KB / KB);
+//        map.put("Survivor1Used", getValue(counters, "sun.gc.generation.0.space.2.used") / KB / KB);
+//        map.put("TenuredUsed", getValue(counters, "sun.gc.generation.1.space.0.used") / KB / KB);
+//        map.put("PermUsed", getValue(counters, "sun.gc.generation.2.space.0.used") / KB / KB);
+//        return map;
     }
 
     private String getLocalConnectorAddress(VirtualMachine vm) throws IOException {
