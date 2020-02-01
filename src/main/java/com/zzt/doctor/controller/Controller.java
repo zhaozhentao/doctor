@@ -7,6 +7,7 @@ import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
 import com.sun.tools.jconsole.JConsoleContext;
 import com.zzt.doctor.entity.JInfo;
+import com.zzt.doctor.entity.MemoryFormItem;
 import com.zzt.doctor.entity.VMDetail;
 import com.zzt.doctor.helper.VmConnector;
 import com.zzt.doctor.vm.ProxyClient;
@@ -27,7 +28,10 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.net.URISyntaxException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -113,8 +117,11 @@ public class Controller {
 
     @GetMapping("/jvms/{id}/memory")
     public Object memory(@PathVariable("id") Integer pid) throws IOException {
-        ArrayList<LocalVirtualMachine> localVirtualMachines = new ArrayList<>(LocalVirtualMachine.getAllVirtualMachines().values());
-        LocalVirtualMachine machine = localVirtualMachines.stream().filter(m -> m.vmid() == pid).findFirst().get();
+        LocalVirtualMachine machine = LocalVirtualMachine.getAllVirtualMachines().values()
+            .stream()
+            .filter(m -> m.vmid() == pid)
+            .findFirst().get();
+
         ProxyClient proxyClient = ProxyClient.getProxyClient(machine);
         if (proxyClient.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
             proxyClient.connect(false);
@@ -122,12 +129,25 @@ public class Controller {
 
         Map<ObjectName, MBeanInfo> mBeanMap = proxyClient.getMBeans("java.lang");
 
-        return mBeanMap.keySet().stream()
+        MemoryUsage heapMemoryUsage = proxyClient.getMemoryMXBean().getHeapMemoryUsage();
+        MemoryUsage nonHeapMemoryUsage = proxyClient.getMemoryMXBean().getNonHeapMemoryUsage();
+
+        MemoryFormItem heapItem = new MemoryFormItem();
+        heapItem.setName("Heap");
+        heapItem.setUsed(heapMemoryUsage.getUsed() / KB / KB);
+        heapItem.setCommitted(heapMemoryUsage.getCommitted() / KB / KB);
+
+        MemoryFormItem nonHeapItem = new MemoryFormItem();
+        nonHeapItem.setName("NonHeap");
+        nonHeapItem.setUsed(nonHeapMemoryUsage.getUsed() / KB / KB);
+        nonHeapItem.setCommitted(nonHeapMemoryUsage.getCommitted() / KB / KB);
+
+        List<MemoryFormItem> items = mBeanMap.keySet().stream()
             .filter(objectName -> "MemoryPool".equals(objectName.getKeyProperty("type")))
             .map(objectName -> {
-                HashMap<String, Object> map = new HashMap<>();
+                MemoryFormItem item = new MemoryFormItem();
 
-                map.put("name", objectName.getKeyProperty("name"));
+                item.setName(objectName.getKeyProperty("name"));
                 // Heap or non-heap?
                 boolean isHeap = false;
                 try {
@@ -135,31 +155,28 @@ public class Controller {
                     if (al.size() > 0) {
                         isHeap = MemoryType.HEAP.name().equals(((Attribute) al.get(0)).getValue());
                     }
-                    map.put("isHeap", isHeap);
+                    item.setHeap(isHeap);
 
                     if (al.size() > 1) {
                         CompositeData cd = (CompositeData) ((Attribute) al.get(1)).getValue();
                         MemoryUsage mu = MemoryUsage.from(cd);
-                        map.put("Used", mu.getUsed() / KB / KB);
-                        map.put("Committed", mu.getCommitted() / KB / KB);
+                        item.setUsed(mu.getUsed() / KB / KB);
+                        item.setCommitted(mu.getCommitted() / KB / KB);
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
 
-                return map;
-            }).collect(Collectors.toList());
+                return item;
+            })
+            .collect(Collectors.toList());
 
-//        PerfData prefData = PerfData.connect(pid);
-//        Map<String, Counter> counters = prefData.getAllCounters();
-//
-//        HashMap<String, Object> map = new HashMap<>();
-//        map.put("EdenUsed", getValue(counters, "sun.gc.generation.0.space.0.used") / KB / KB);
-//        map.put("Survivor0Used", getValue(counters, "sun.gc.generation.0.space.1.used") / KB / KB);
-//        map.put("Survivor1Used", getValue(counters, "sun.gc.generation.0.space.2.used") / KB / KB);
-//        map.put("TenuredUsed", getValue(counters, "sun.gc.generation.1.space.0.used") / KB / KB);
-//        map.put("PermUsed", getValue(counters, "sun.gc.generation.2.space.0.used") / KB / KB);
-//        return map;
+        items.add(0, heapItem);
+        items.add(1, nonHeapItem);
+
+        proxyClient.flush();
+
+        return items;
     }
 
     private String getLocalConnectorAddress(VirtualMachine vm) throws IOException {

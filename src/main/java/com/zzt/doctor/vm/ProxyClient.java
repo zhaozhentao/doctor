@@ -278,7 +278,7 @@ public class ProxyClient implements JConsoleContext {
         return this.connectionState;
     }
 
-    void flush() {
+    public void flush() {
         if (server != null) {
             server.flush();
         }
