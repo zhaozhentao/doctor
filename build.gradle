@@ -16,6 +16,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
 
     compile files("${System.properties['java.home']}/../lib/tools.jar")
+    compile group: 'com.vip.vjtools', name: 'vjtools', version: '1.0.8', ext: 'pom'
+    compile group: 'com.vip.vjtools', name: 'vjtop', version: '1.0.8'
 
     compileOnly 'org.projectlombok:lombok:1.18.10'
     annotationProcessor 'org.projectlombok:lombok:1.18.10'

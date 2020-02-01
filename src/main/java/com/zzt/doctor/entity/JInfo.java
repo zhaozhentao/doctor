@@ -1,23 +1,26 @@
 package com.zzt.doctor.entity;
 
 import lombok.Data;
+import org.springframework.beans.BeanUtils;
+import sun.tools.jconsole.LocalVirtualMachine;
 
 /**
  * @author zhaotao
  */
 @Data
 public class JInfo {
-    private Integer id;
 
-    private String mainClass;
-
-    private String mainArgs;
-
-    private String vmArgs;
-
-    private String vmFlags;
-
+    private String address;
     private String commandLine;
+    private String displayName;
+    private int vmid;
+    private boolean isAttachSupported;
 
-    private String vmVersion;
+    public JInfo(LocalVirtualMachine m) {
+        vmid = m.vmid();
+        commandLine = m.toString();
+        displayName = m.displayName();
+        address = m.connectorAddress();
+        isAttachSupported = m.isAttachable();
+    }
 }
