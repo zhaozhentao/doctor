@@ -117,13 +117,15 @@ public class Controller {
 
         MemoryFormItem heapItem = new MemoryFormItem();
         heapItem.setName("Heap");
-        heapItem.setUsed(heapMemoryUsage.getUsed() / KB / KB);
-        heapItem.setCommitted(heapMemoryUsage.getCommitted() / KB / KB);
+        heapItem.setMax(heapMemoryUsage.getMax());
+        heapItem.setUsed(heapMemoryUsage.getUsed());
+        heapItem.setCommitted(heapMemoryUsage.getCommitted());
 
         MemoryFormItem nonHeapItem = new MemoryFormItem();
         nonHeapItem.setName("NonHeap");
-        nonHeapItem.setUsed(nonHeapMemoryUsage.getUsed() / KB / KB);
-        nonHeapItem.setCommitted(nonHeapMemoryUsage.getCommitted() / KB / KB);
+        nonHeapItem.setMax(nonHeapMemoryUsage.getMax());
+        nonHeapItem.setUsed(nonHeapMemoryUsage.getUsed());
+        nonHeapItem.setCommitted(nonHeapMemoryUsage.getCommitted());
 
         List<MemoryFormItem> items = mBeanMap.keySet().stream()
             .filter(objectName -> "MemoryPool".equals(objectName.getKeyProperty("type")))
@@ -143,8 +145,9 @@ public class Controller {
                     if (al.size() > 1) {
                         CompositeData cd = (CompositeData) ((Attribute) al.get(1)).getValue();
                         MemoryUsage mu = MemoryUsage.from(cd);
-                        item.setUsed(mu.getUsed() / KB / KB);
-                        item.setCommitted(mu.getCommitted() / KB / KB);
+                        item.setUsed(mu.getUsed());
+                        item.setCommitted(mu.getCommitted());
+                        item.setMax(mu.getMax());
                     }
                 } catch (IOException e) {
                     e.printStackTrace();

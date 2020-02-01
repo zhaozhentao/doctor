@@ -10,6 +10,7 @@ public class MemoryFormItem {
 
     private String name;
     private boolean isHeap = false;
-    private float used;
-    private float committed;
+    private long used;
+    private long committed;
+    private long max;
 }
