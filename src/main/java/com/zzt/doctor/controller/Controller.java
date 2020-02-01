@@ -11,12 +11,8 @@ import com.zzt.doctor.entity.MemoryFormItem;
 import com.zzt.doctor.entity.VMDetail;
 import com.zzt.doctor.helper.VmConnector;
 import com.zzt.doctor.vm.ProxyClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import sun.jvmstat.monitor.*;
-import sun.management.counter.Counter;
 import sun.tools.jconsole.LocalVirtualMachine;
 
 import javax.management.*;
@@ -28,7 +24,6 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -44,10 +39,6 @@ public class Controller {
     private static final String LOCAL_CONNECTOR_ADDRESS_PROP = "com.sun.management.jmxremote.localConnectorAddress";
 
     private float KB = 1000;
-
-    public static void main(String[] args) throws IOException {
-
-    }
 
     @GetMapping("/jvms")
     public Object main() {
@@ -117,15 +108,7 @@ public class Controller {
 
     @GetMapping("/jvms/{id}/memory")
     public Object memory(@PathVariable("id") Integer pid) throws IOException {
-        LocalVirtualMachine machine = LocalVirtualMachine.getAllVirtualMachines().values()
-            .stream()
-            .filter(m -> m.vmid() == pid)
-            .findFirst().get();
-
-        ProxyClient proxyClient = ProxyClient.getProxyClient(machine);
-        if (proxyClient.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
-            proxyClient.connect(false);
-        }
+        ProxyClient proxyClient = getProxyClient(pid);
 
         Map<ObjectName, MBeanInfo> mBeanMap = proxyClient.getMBeans("java.lang");
 
@@ -179,6 +162,27 @@ public class Controller {
         return items;
     }
 
+    @PostMapping("/jvms/{id}/gc")
+    public void gc(@PathVariable("id") Integer pid) throws IOException {
+        ProxyClient proxyClient = getProxyClient(pid);
+
+        proxyClient.getMemoryMXBean().gc();
+    }
+
+    private ProxyClient getProxyClient(Integer pid) throws IOException {
+        LocalVirtualMachine machine = LocalVirtualMachine.getAllVirtualMachines().values()
+            .stream()
+            .filter(m -> m.vmid() == pid)
+            .findFirst().get();
+
+        ProxyClient proxyClient = ProxyClient.getProxyClient(machine);
+        if (proxyClient.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
+            proxyClient.connect(false);
+        }
+
+        return proxyClient;
+    }
+
     private String getLocalConnectorAddress(VirtualMachine vm) throws IOException {
         // 1. 检查smartAgent是否已启动
         Properties agentProps = vm.getAgentProperties();
@@ -224,14 +228,6 @@ public class Controller {
         }
 
         return address;
-    }
-
-    private Long getValue(Map<String, Counter> counters, String key) {
-        Counter counter = counters.get(key);
-        if (counter != null && counter.getValue() != null) {
-            return Long.valueOf(counter.getValue().toString());
-        }
-        return 0L;
     }
 }
 
