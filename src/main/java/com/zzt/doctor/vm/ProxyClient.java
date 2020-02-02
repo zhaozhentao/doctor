@@ -832,7 +832,7 @@ public class ProxyClient implements JConsoleContext {
         return this.hasHotSpotDiagnosticMXBean;
     }
 
-    boolean isLockUsageSupported() {
+    public boolean isLockUsageSupported() {
         return supportsLockUsage;
     }
 

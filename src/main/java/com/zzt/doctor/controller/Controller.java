@@ -6,9 +6,7 @@ import com.sun.tools.attach.AgentLoadException;
 import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
 import com.sun.tools.jconsole.JConsoleContext;
-import com.zzt.doctor.entity.JInfo;
-import com.zzt.doctor.entity.MemoryFormItem;
-import com.zzt.doctor.entity.VMDetail;
+import com.zzt.doctor.entity.*;
 import com.zzt.doctor.helper.VmConnector;
 import com.zzt.doctor.vm.ProxyClient;
 import org.springframework.web.bind.annotation.*;
@@ -24,11 +22,11 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.net.URISyntaxException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * @author zhaotao
@@ -174,15 +172,90 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/threads_summary")
-    public Object threads(@PathVariable("id") Integer pid) throws IOException {
+    public Object threadsSummary(@PathVariable("id") Integer pid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
+        ThreadMXBean threadMXBean = proxyClient.getThreadMXBean();
 
-        HashMap<String, Object> map = new HashMap<>();
-        map.put("activeThreadCount", proxyClient.getThreadMXBean().getThreadCount());
-        map.put("peakThreadCount", proxyClient.getThreadMXBean().getPeakThreadCount());
+        Threads threads = new Threads();
+        threads.setActiveThreadCount(threadMXBean.getThreadCount());
+        threads.setPeakThreadCount(threadMXBean.getPeakThreadCount());
+
         proxyClient.flush();
 
-        return map;
+        return threads;
+    }
+
+    @GetMapping("/jvms/{id}/threads")
+    private Object threads(@PathVariable("id") Integer pid) throws IOException {
+        ProxyClient proxyClient = getProxyClient(pid);
+        ThreadMXBean threadMXBean = proxyClient.getThreadMXBean();
+
+        List<DThreadInfo> threadInfos = Stream.of(threadMXBean.getThreadInfo(threadMXBean.getAllThreadIds()))
+            .map(DThreadInfo::new).collect(Collectors.toList());
+
+        proxyClient.flush();
+
+        return threadInfos;
+    }
+
+    @GetMapping("/jvms/{id}/threads/{thread_id}")
+    public Object threadInfo(@PathVariable("id") Integer pid, @PathVariable("thread_id") Integer tid) throws IOException {
+        ProxyClient proxyClient = getProxyClient(pid);
+
+        ThreadMXBean tb = proxyClient.getThreadMXBean();
+        ThreadInfo ti = null;
+        MonitorInfo[] monitors = null;
+        StringBuilder sb = new StringBuilder();
+
+        if (proxyClient.isLockUsageSupported() && tb.isObjectMonitorUsageSupported()) {
+            // VMs that support the monitor usage monitoring
+            ThreadInfo[] infos = tb.dumpAllThreads(true, false);
+            for (ThreadInfo info : infos) {
+                if (info.getThreadId() == tid) {
+                    ti = info;
+                    monitors = info.getLockedMonitors();
+                    break;
+                }
+            }
+        } else {
+            // VM doesn't support monitor usage monitoring
+            ti = tb.getThreadInfo(tid, Integer.MAX_VALUE);
+        }
+
+        if (ti != null) {
+            if (ti.getLockName() == null) {
+                sb.append(ti.getThreadName()).append(" ")
+                    .append(ti.getThreadState().toString());
+            } else if (ti.getLockOwnerName() == null) {
+                sb.append(ti.getThreadName()).append(" ")
+                    .append(ti.getThreadState().toString()).append(" ")
+                    .append(ti.getLockName());
+            } else {
+                sb.append(ti.getThreadName()).append(" ")
+                    .append(ti.getThreadState().toString()).append(" ")
+                    .append(ti.getLockName()).append(" ")
+                    .append(ti.getLockOwnerName());
+            }
+            sb.append("\n总阻止数:").append(ti.getBlockedCount())
+                .append(",总等待数:").append(ti.getWaitedCount())
+                .append("\n堆栈跟踪\n");
+
+            int index = 0;
+            for (StackTraceElement e : ti.getStackTrace()) {
+                sb.append(e.toString()).append("\n");
+                if (monitors != null) {
+                    for (MonitorInfo mi : monitors) {
+                        if (mi.getLockedStackDepth() == index) {
+                            sb.append(mi.toString());
+                        }
+                    }
+                }
+                index++;
+            }
+        }
+
+        proxyClient.flush();
+        return sb.toString();
     }
 
     private ProxyClient getProxyClient(Integer pid) throws IOException {
