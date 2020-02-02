@@ -1,7 +1,6 @@
 package com.zzt.doctor.entity;
 
 import lombok.Data;
-import org.springframework.beans.BeanUtils;
 import sun.tools.jconsole.LocalVirtualMachine;
 
 /**
