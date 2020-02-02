@@ -12,6 +12,8 @@ import com.zzt.doctor.vm.ProxyClient;
 import org.springframework.web.bind.annotation.*;
 import sun.jvmstat.monitor.*;
 import sun.tools.jconsole.LocalVirtualMachine;
+import sun.tools.jconsole.Messages;
+import sun.tools.jconsole.Resources;
 
 import javax.management.*;
 import javax.management.openmbean.CompositeData;
@@ -22,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -224,29 +227,32 @@ public class Controller {
 
         if (ti != null) {
             if (ti.getLockName() == null) {
-                sb.append(ti.getThreadName()).append(" ")
-                    .append(ti.getThreadState().toString());
+                sb.append(Resources.format(Messages.NAME_STATE,
+                    ti.getThreadName(),
+                    ti.getThreadState().toString()));
             } else if (ti.getLockOwnerName() == null) {
-                sb.append(ti.getThreadName()).append(" ")
-                    .append(ti.getThreadState().toString()).append(" ")
-                    .append(ti.getLockName());
+                sb.append(Resources.format(Messages.NAME_STATE_LOCK_NAME,
+                    ti.getThreadName(),
+                    ti.getThreadState().toString(),
+                    ti.getLockName()));
             } else {
-                sb.append(ti.getThreadName()).append(" ")
-                    .append(ti.getThreadState().toString()).append(" ")
-                    .append(ti.getLockName()).append(" ")
-                    .append(ti.getLockOwnerName());
+                sb.append(Resources.format(Messages.NAME_STATE_LOCK_NAME_LOCK_OWNER,
+                    ti.getThreadName(),
+                    ti.getThreadState().toString(),
+                    ti.getLockName(),
+                    ti.getLockOwnerName()));
             }
-            sb.append("\n总阻止数:").append(ti.getBlockedCount())
-                .append(",总等待数:").append(ti.getWaitedCount())
-                .append("\n堆栈跟踪\n");
-
+            sb.append(Resources.format(Messages.BLOCKED_COUNT_WAITED_COUNT,
+                ti.getBlockedCount(),
+                ti.getWaitedCount()));
+            sb.append(Messages.STACK_TRACE);
             int index = 0;
             for (StackTraceElement e : ti.getStackTrace()) {
                 sb.append(e.toString()).append("\n");
                 if (monitors != null) {
                     for (MonitorInfo mi : monitors) {
                         if (mi.getLockedStackDepth() == index) {
-                            sb.append(mi.toString());
+                            sb.append(Resources.format(Messages.MONITOR_LOCKED, mi.toString()));
                         }
                     }
                 }
@@ -255,10 +261,87 @@ public class Controller {
         }
 
         proxyClient.flush();
+
         return sb.toString();
     }
 
-    private ProxyClient getProxyClient(Integer pid) throws IOException {
+    @GetMapping("/jvms/{id}/deadlock")
+    public Object deadLocks(@PathVariable("id") Integer pid) throws IOException {
+        ProxyClient proxyClient = getProxyClient(pid);
+        ThreadMXBean threadMBean = proxyClient.getThreadMXBean();
+
+        Long[][] deadlockedThreadIdsArray = getDeadlockedThreadIds(proxyClient, threadMBean);
+
+        List<List<DeadLockThread>> deadLocks;
+        if (deadlockedThreadIdsArray == null) {
+            deadLocks = new ArrayList<>();
+        } else {
+            deadLocks = Stream.of(deadlockedThreadIdsArray)
+                .map(item -> Stream.of(item)
+                    .map(j -> new DeadLockThread(threadMBean.getThreadInfo(j)))
+                    .collect(Collectors.toList()))
+                .collect(Collectors.toList());
+        }
+
+        proxyClient.flush();
+        return deadLocks;
+    }
+
+    public Long[][] getDeadlockedThreadIds(ProxyClient proxyClient, ThreadMXBean threadMBean) throws IOException {
+        long[] ids = proxyClient.findDeadlockedThreads();
+        if (ids == null) {
+            return null;
+        }
+        ThreadInfo[] infos = threadMBean.getThreadInfo(ids, Integer.MAX_VALUE);
+
+        List<Long[]> dcycles = new ArrayList<Long[]>();
+        List<Long> cycle = new ArrayList<Long>();
+
+        // keep track of which thread is visited
+        // one thread can only be in one cycle
+        boolean[] visited = new boolean[ids.length];
+
+        int deadlockedThread = -1; // Index into arrays
+        while (true) {
+            if (deadlockedThread < 0) {
+                if (cycle.size() > 0) {
+                    // a cycle found
+                    dcycles.add(cycle.toArray(new Long[0]));
+                    cycle = new ArrayList<Long>();
+                }
+                // start a new cycle from a non-visited thread
+                for (int j = 0; j < ids.length; j++) {
+                    if (!visited[j]) {
+                        deadlockedThread = j;
+                        visited[j] = true;
+                        break;
+                    }
+                }
+                if (deadlockedThread < 0) {
+                    // done
+                    break;
+                }
+            }
+
+            cycle.add(ids[deadlockedThread]);
+            long nextThreadId = infos[deadlockedThread].getLockOwnerId();
+            for (int j = 0; j < ids.length; j++) {
+                ThreadInfo ti = infos[j];
+                if (ti.getThreadId() == nextThreadId) {
+                    if (visited[j]) {
+                        deadlockedThread = -1;
+                    } else {
+                        deadlockedThread = j;
+                        visited[j] = true;
+                    }
+                    break;
+                }
+            }
+        }
+        return dcycles.toArray(new Long[0][0]);
+    }
+
+    private static ProxyClient getProxyClient(Integer pid) throws IOException {
         LocalVirtualMachine machine = LocalVirtualMachine.getAllVirtualMachines().values()
             .stream()
             .filter(m -> m.vmid() == pid)
