@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.net.URISyntaxException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -170,6 +171,18 @@ public class Controller {
         ProxyClient proxyClient = getProxyClient(pid);
 
         proxyClient.getMemoryMXBean().gc();
+    }
+
+    @GetMapping("/jvms/{id}/threads_summary")
+    public Object threads(@PathVariable("id") Integer pid) throws IOException {
+        ProxyClient proxyClient = getProxyClient(pid);
+
+        HashMap<String, Object> map = new HashMap<>();
+        map.put("activeThreadCount", proxyClient.getThreadMXBean().getThreadCount());
+        map.put("peakThreadCount", proxyClient.getThreadMXBean().getPeakThreadCount());
+        proxyClient.flush();
+
+        return map;
     }
 
     private ProxyClient getProxyClient(Integer pid) throws IOException {
