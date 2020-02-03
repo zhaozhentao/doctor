@@ -30,8 +30,7 @@ public class ProxyClient implements JConsoleContext {
     private SwingPropertyChangeSupport propertyChangeSupport =
         new SwingPropertyChangeSupport(this, true);
 
-    private static Map<String, ProxyClient> cache =
-        Collections.synchronizedMap(new HashMap<String, ProxyClient>());
+    private static Map<String, ProxyClient> cache = Collections.synchronizedMap(new HashMap<>());
 
     private volatile boolean isDead = true;
     private String hostName = null;
@@ -86,7 +85,7 @@ public class ProxyClient implements JConsoleContext {
                         String userName, String password) throws IOException {
         this.connectionName = getConnectionName(hostName, port, userName);
         this.displayName = connectionName;
-        if (hostName.equals("localhost") && port == 0) {
+        if ("localhost".equals(hostName) && port == 0) {
             // Monitor self
             this.hostName = hostName;
             this.port = port;

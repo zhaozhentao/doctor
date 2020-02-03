@@ -1,5 +1,6 @@
 package com.zzt.doctor.controller;
 
+import cn.hutool.core.io.IoUtil;
 import com.sun.management.OperatingSystemMXBean;
 import com.sun.tools.attach.AgentInitializationException;
 import com.sun.tools.attach.AgentLoadException;
@@ -11,6 +12,7 @@ import com.zzt.doctor.helper.VmConnector;
 import com.zzt.doctor.vm.ProxyClient;
 import org.springframework.web.bind.annotation.*;
 import sun.jvmstat.monitor.*;
+import sun.tools.attach.HotSpotVirtualMachine;
 import sun.tools.jconsole.LocalVirtualMachine;
 import sun.tools.jconsole.Messages;
 import sun.tools.jconsole.Resources;
@@ -20,14 +22,18 @@ import javax.management.openmbean.CompositeData;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.management.*;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -285,6 +291,40 @@ public class Controller {
 
         proxyClient.flush();
         return deadLocks;
+    }
+
+    @GetMapping("/jvms/{id}/objects")
+    public Object objects(@PathVariable("id") Integer pid) throws AttachNotSupportedException, IOException {
+        VirtualMachine vm = VirtualMachine.attach(String.valueOf(pid));
+
+        InputStream inputStream = ((HotSpotVirtualMachine) vm).heapHisto("-all");
+        BufferedReader reader = IoUtil.getReader(inputStream, "UTF-8");
+
+        final Matcher matcher = PATTERN.matcher("");
+        ArrayList<HistogramBean> list = new ArrayList<>();
+        reader.lines().forEach(line -> {
+            HistogramBean bean = parseHistogramBean(matcher, line);
+            if (bean != null) {
+                list.add(bean);
+            }
+        });
+
+        reader.close();
+        inputStream.close();
+        vm.detach();
+
+        return list;
+    }
+
+    private static final Pattern PATTERN = Pattern.compile("\\s*(\\d+):{1}\\s+(\\d+)\\s+(\\d+)\\s+(.+)");
+
+    private HistogramBean parseHistogramBean(Matcher matcher, String line) {
+        matcher.reset(line);
+        if (matcher.matches()) {
+            return new HistogramBean(matcher.group(1), matcher.group(2), matcher.group(3), matcher.group(4));
+        }
+
+        return null;
     }
 
     public Long[][] getDeadlockedThreadIds(ProxyClient proxyClient, ThreadMXBean threadMBean) throws IOException {
