@@ -300,12 +300,19 @@ public class Controller {
         InputStream inputStream = ((HotSpotVirtualMachine) vm).heapHisto("-all");
         BufferedReader reader = IoUtil.getReader(inputStream, "UTF-8");
 
-        final Matcher matcher = PATTERN.matcher("");
+        Matcher matcher = PATTERN.matcher("");
+        StringBuilder total = new StringBuilder();
+
         ArrayList<HistogramBean> list = new ArrayList<>();
         reader.lines().forEach(line -> {
             HistogramBean bean = parseHistogramBean(matcher, line);
             if (bean != null) {
                 list.add(bean);
+                return;
+            }
+
+            if (line.contains("Total")) {
+                total.append(line);
             }
         });
 
@@ -313,7 +320,7 @@ public class Controller {
         inputStream.close();
         vm.detach();
 
-        return list;
+        return new ObjectsInfo(total.toString(), list);
     }
 
     private static final Pattern PATTERN = Pattern.compile("\\s*(\\d+):{1}\\s+(\\d+)\\s+(\\d+)\\s+(.+)");
