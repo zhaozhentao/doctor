@@ -9,11 +9,12 @@ import sun.tools.jconsole.LocalVirtualMachine;
 @Data
 public class JInfo {
 
+    private int vmid;
     private String address;
     private String commandLine;
     private String displayName;
-    private int vmid;
     private boolean isAttachSupported;
+    private boolean isConnected;
 
     public JInfo(LocalVirtualMachine m) {
         vmid = m.vmid();

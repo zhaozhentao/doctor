@@ -540,6 +540,8 @@ public class ProxyClient implements JConsoleContext {
             isDead = true;
             setConnectionState(ConnectionState.DISCONNECTED);
         }
+
+        cache.remove(String.valueOf(getVmid()));
     }
 
     /**
@@ -1030,5 +1032,9 @@ public class ProxyClient implements JConsoleContext {
         private static <K, V> Map<K, V> newMap() {
             return new HashMap<K, V>();
         }
+    }
+
+    public static Map<String, ProxyClient> getCache() {
+        return cache;
     }
 }

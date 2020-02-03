@@ -28,10 +28,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.management.*;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,8 +50,11 @@ public class Controller {
 
     @GetMapping("/jvms")
     public Object main() {
+        Set<String> ids = ProxyClient.getCache().keySet();
+
         return LocalVirtualMachine.getAllVirtualMachines().values().stream()
             .map(JInfo::new)
+            .peek(info -> info.setConnected(ids.contains(String.valueOf(info.getVmid()))))
             .collect(Collectors.toList());
     }
 
@@ -325,6 +325,13 @@ public class Controller {
         vm.detach();
 
         return new ObjectsInfo(total.toString(), list);
+    }
+
+    @DeleteMapping("/jvms/{id}")
+    public void disConnect(@PathVariable("id") Integer pid) throws IOException {
+        ProxyClient client = getProxyClient(pid);
+
+        client.disconnect();
     }
 
     private float cpu(ProxyClient proxyClient, Integer pid) throws IOException {
