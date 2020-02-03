@@ -13,7 +13,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    compile("org.springframework.boot:spring-boot-starter-web")
 
     compile files("${System.properties['java.home']}/../lib/tools.jar")
     compile files("${System.properties['java.home']}/../lib/jconsole.jar")
