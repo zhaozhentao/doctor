@@ -10,4 +10,5 @@ public class Threads {
 
     private int activeThreadCount;
     private int peakThreadCount;
+    private float cpuUsage;
 }

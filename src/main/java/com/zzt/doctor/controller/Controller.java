@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -47,6 +48,8 @@ public class Controller {
     private static final String LOCAL_CONNECTOR_ADDRESS_PROP = "com.sun.management.jmxremote.localConnectorAddress";
 
     private float KB = 1000;
+
+    private ConcurrentHashMap<Integer, CpuInfo> map = new ConcurrentHashMap<>();
 
     @GetMapping("/jvms")
     public Object main() {
@@ -188,6 +191,7 @@ public class Controller {
         Threads threads = new Threads();
         threads.setActiveThreadCount(threadMXBean.getThreadCount());
         threads.setPeakThreadCount(threadMXBean.getPeakThreadCount());
+        threads.setCpuUsage(cpu(proxyClient, pid));
 
         proxyClient.flush();
 
@@ -321,6 +325,41 @@ public class Controller {
         vm.detach();
 
         return new ObjectsInfo(total.toString(), list);
+    }
+
+    private float cpu(ProxyClient proxyClient, Integer pid) throws IOException {
+        RuntimeMXBean rb = proxyClient.getRuntimeMXBean();
+        OperatingSystemMXBean sb = proxyClient.getSunOperatingSystemMXBean();
+        java.lang.management.OperatingSystemMXBean ob = proxyClient.getOperatingSystemMXBean();
+
+        if (sb == null) {
+            return 0;
+        }
+
+        CpuInfo cpuInfo = map.get(pid);
+        if (cpuInfo == null) {
+            map.put(pid, new CpuInfo(rb.getUptime(), sb.getProcessCpuTime()));
+            return 0;
+        }
+
+        long processCpuTime = sb.getProcessCpuTime();
+        long upTime = rb.getUptime();
+
+        float cpuUsage = 0;
+        if (upTime > cpuInfo.getUpTime()) {
+            long elapsedCpu = processCpuTime - cpuInfo.getProcessCpuTime();
+            long elapsedTime = upTime - cpuInfo.getUpTime();
+
+            // cpuUsage could go higher than 100% because elapsedTime
+            // and elapsedCpu are not fetched simultaneously. Limit to
+            // 99% to avoid Plotter showing a scale from 0% to 200%.
+            cpuUsage = Math.min(99F, elapsedCpu / (elapsedTime * 10000F * ob.getAvailableProcessors()));
+        }
+
+        cpuInfo.setProcessCpuTime(processCpuTime);
+        cpuInfo.setUpTime(upTime);
+
+        return cpuUsage;
     }
 
     private static final Pattern PATTERN = Pattern.compile("\\s*(\\d+):{1}\\s+(\\d+)\\s+(\\d+)\\s+(.+)");
