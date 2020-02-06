@@ -46,7 +46,7 @@ public class Controller {
 
     private float KB = 1000;
 
-    private ConcurrentHashMap<Integer, CpuInfo> map = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<String, CpuInfo> map = new ConcurrentHashMap<>();
 
     @GetMapping("/jvms")
     public Object main() {
@@ -59,23 +59,14 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/vm")
-    public Object mv(@PathVariable("id") Integer id) throws URISyntaxException, MonitorException, IOException, AttachNotSupportedException, MalformedObjectNameException {
-        HostIdentifier hostId = new HostIdentifier((String) null);
-        MonitoredHost monitoredHost = MonitoredHost.getMonitoredHost(hostId);
+    public Object mv(@PathVariable("id") String id) throws IOException {
+        ProxyClient client = getProxyClient(id);
 
-        String vmidString = "//" + id + "?mode=r";
-        MonitoredVm vm = monitoredHost.getMonitoredVm(new VmIdentifier(vmidString), 0);
-
+        RuntimeMXBean runtimeMXBean = client.getRuntimeMXBean();
         VMDetail vmDetail = new VMDetail();
-        vmDetail.setMainClass(MonitoredVmUtil.mainClass(vm, true));
-        vmDetail.setVmArgs(MonitoredVmUtil.jvmArgs(vm).split(" "));
+        vmDetail.setMainClass(client.getDisplayName());
+        vmDetail.setVmArgs(runtimeMXBean.getInputArguments());
 
-        VirtualMachine virtualMachine = VirtualMachine.attach(String.valueOf(id));
-        final String address = getLocalConnectorAddress(virtualMachine);
-        JMXConnector connector = JMXConnectorFactory.connect(new JMXServiceURL(address));
-        VmConnector vmConnector = new VmConnector(connector);
-
-        RuntimeMXBean runtimeMXBean = vmConnector.getRuntimeMXBean();
         vmDetail.setClassPaths(runtimeMXBean.getClassPath().split(":"));
         vmDetail.setLibraryPaths(runtimeMXBean.getLibraryPath().split(":"));
         vmDetail.setBootstrapClassPaths(runtimeMXBean.getBootClassPath().split(":"));
@@ -84,7 +75,7 @@ public class Controller {
         vmDetail.setVmVersion(runtimeMXBean.getVmVersion());
 
         // 系统信息
-        OperatingSystemMXBean ob = vmConnector.getOperatingSystemMXBean();
+        OperatingSystemMXBean ob = client.getSunOperatingSystemMXBean();
         vmDetail.setProgressCpuTime(ob.getProcessCpuTime() / 1000000);
         vmDetail.setAvailableProcessors(ob.getAvailableProcessors());
         vmDetail.setTotalPhysicalMemorySize(ob.getTotalPhysicalMemorySize() / KB / KB);
@@ -92,7 +83,7 @@ public class Controller {
         vmDetail.setTotalSwapSpaceSize(ob.getTotalSwapSpaceSize() / KB / KB);
         vmDetail.setFreeSwapSpaceSize(ob.getFreeSwapSpaceSize() / KB / KB);
 
-        MemoryMXBean mxBean = vmConnector.getMemoryMXBean();
+        MemoryMXBean mxBean = client.getMemoryMXBean();
         MemoryUsage heap = mxBean.getHeapMemoryUsage();
 
         // 堆内存使用情况
@@ -101,7 +92,7 @@ public class Controller {
         vmDetail.setHeapCommitted(heap.getCommitted() / KB / KB);
 
         // gc情况
-        List<GarbageCollectorMXBean> garbageCollectorMXBeans = vmConnector.getGarbageCollectorMXBeans();
+        Collection<GarbageCollectorMXBean> garbageCollectorMXBeans = client.getGarbageCollectorMXBeans();
 
         vmDetail.setGarbageCollectInfos(garbageCollectorMXBeans.stream().map(i -> {
             VMDetail.GarbageCollectInfo info = new VMDetail.GarbageCollectInfo();
@@ -111,14 +102,13 @@ public class Controller {
             return info;
         }).collect(Collectors.toList()));
 
-        connector.close();
-        virtualMachine.detach();
+        client.flush();
 
         return vmDetail;
     }
 
     @GetMapping("/jvms/{id}/memory")
-    public Object memory(@PathVariable("id") Integer pid) throws IOException {
+    public Object memory(@PathVariable("id") String pid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
 
         Map<ObjectName, MBeanInfo> mBeanMap = proxyClient.getMBeans("java.lang");
@@ -177,14 +167,14 @@ public class Controller {
     }
 
     @PostMapping("/jvms/{id}/gc")
-    public void gc(@PathVariable("id") Integer pid) throws IOException {
+    public void gc(@PathVariable("id") String pid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
 
         proxyClient.getMemoryMXBean().gc();
     }
 
     @GetMapping("/jvms/{id}/threads_summary")
-    public Object threadsSummary(@PathVariable("id") Integer pid) throws IOException {
+    public Object threadsSummary(@PathVariable("id") String pid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
         ThreadMXBean threadMXBean = proxyClient.getThreadMXBean();
 
@@ -199,7 +189,7 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/threads")
-    private Object threads(@PathVariable("id") Integer pid) throws IOException {
+    private Object threads(@PathVariable("id") String pid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
         ThreadMXBean threadMXBean = proxyClient.getThreadMXBean();
 
@@ -212,7 +202,7 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/threads/{thread_id}")
-    public Object threadInfo(@PathVariable("id") Integer pid, @PathVariable("thread_id") Integer tid) throws IOException {
+    public Object threadInfo(@PathVariable("id") String pid, @PathVariable("thread_id") Integer tid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
 
         ThreadMXBean tb = proxyClient.getThreadMXBean();
@@ -276,7 +266,7 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/deadlock")
-    public Object deadLocks(@PathVariable("id") Integer pid) throws IOException {
+    public Object deadLocks(@PathVariable("id") String pid) throws IOException {
         ProxyClient proxyClient = getProxyClient(pid);
         ThreadMXBean threadMBean = proxyClient.getThreadMXBean();
 
@@ -298,7 +288,7 @@ public class Controller {
     }
 
     @GetMapping("/jvms/{id}/objects")
-    public Object objects(@PathVariable("id") Integer pid) throws AttachNotSupportedException, IOException {
+    public Object objects(@PathVariable("id") String pid) throws AttachNotSupportedException, IOException {
         VirtualMachine vm = VirtualMachine.attach(String.valueOf(pid));
 
         InputStream inputStream = ((HotSpotVirtualMachine) vm).heapHisto("-all");
@@ -328,13 +318,19 @@ public class Controller {
     }
 
     @DeleteMapping("/jvms/{id}")
-    public void disConnect(@PathVariable("id") Integer pid) throws IOException {
+    public void disConnect(@PathVariable("id") String pid) throws IOException {
         ProxyClient client = getProxyClient(pid);
 
         client.disconnect();
     }
 
-    private float cpu(ProxyClient proxyClient, Integer pid) throws IOException {
+    @PostMapping("/jvms")
+    public String connect(@RequestParam("host") String host, @RequestParam("userName") String userName, @RequestParam("password") String password) throws IOException {
+        String[] hosts = host.split(":");
+        return getRemoteClient(hosts[0], Integer.parseInt(hosts[1]), userName, password).key;
+    }
+
+    private float cpu(ProxyClient proxyClient, String vmKey) throws IOException {
         RuntimeMXBean rb = proxyClient.getRuntimeMXBean();
         OperatingSystemMXBean sb = proxyClient.getSunOperatingSystemMXBean();
         java.lang.management.OperatingSystemMXBean ob = proxyClient.getOperatingSystemMXBean();
@@ -343,9 +339,9 @@ public class Controller {
             return 0;
         }
 
-        CpuInfo cpuInfo = map.get(pid);
+        CpuInfo cpuInfo = map.get(vmKey);
         if (cpuInfo == null) {
-            map.put(pid, new CpuInfo(rb.getUptime(), sb.getProcessCpuTime()));
+            map.put(vmKey, new CpuInfo(rb.getUptime(), sb.getProcessCpuTime()));
             return 0;
         }
 
@@ -434,18 +430,37 @@ public class Controller {
         return dcycles.toArray(new Long[0][0]);
     }
 
-    private static ProxyClient getProxyClient(Integer pid) throws IOException {
+    private ProxyClient getProxyClient(String pid) {
+        try {
+            int id = Integer.parseInt(pid);
+            return getLocalClient(id);
+        } catch (Exception e) {
+            return ProxyClient.getCache().get(pid);
+        }
+    }
+
+    private ProxyClient getLocalClient(Integer pid) throws IOException {
         LocalVirtualMachine machine = LocalVirtualMachine.getAllVirtualMachines().values()
             .stream()
             .filter(m -> m.vmid() == pid)
             .findFirst().get();
 
         ProxyClient proxyClient = ProxyClient.getProxyClient(machine);
-        if (proxyClient.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
-            proxyClient.connect(false);
-        }
+        checkConnect(proxyClient);
 
         return proxyClient;
+    }
+
+    private ProxyClient getRemoteClient(String hostName, int port, String userName, String password) throws IOException {
+        ProxyClient client = ProxyClient.getProxyClient(hostName, port, userName, password);
+        checkConnect(client);
+        return client;
+    }
+
+    private void checkConnect(ProxyClient client) {
+        if (client.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
+            client.connect(false);
+        }
     }
 
     private String getLocalConnectorAddress(VirtualMachine vm) throws IOException {

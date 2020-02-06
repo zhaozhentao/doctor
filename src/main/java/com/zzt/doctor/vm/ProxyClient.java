@@ -2,25 +2,38 @@ package com.zzt.doctor.vm;
 
 import com.sun.management.HotSpotDiagnosticMXBean;
 import com.sun.tools.jconsole.JConsoleContext;
-import java.beans.PropertyChangeListener;
-import java.beans.PropertyChangeEvent;
-import java.io.IOException;
-import java.lang.management.*;
-import static java.lang.management.ManagementFactory.*;
-import java.lang.ref.WeakReference;
-import java.lang.reflect.*;
-import java.rmi.*;
-import java.rmi.registry.*;
-import java.rmi.server.*;
-import java.util.*;
-import javax.management.*;
-import javax.management.remote.*;
-import javax.management.remote.rmi.*;
-import javax.rmi.ssl.SslRMIClientSocketFactory;
-import javax.swing.event.SwingPropertyChangeSupport;
 import sun.rmi.server.UnicastRef2;
 import sun.rmi.transport.LiveRef;
 import sun.tools.jconsole.LocalVirtualMachine;
+
+import javax.management.*;
+import javax.management.remote.JMXConnector;
+import javax.management.remote.JMXConnectorFactory;
+import javax.management.remote.JMXServiceURL;
+import javax.management.remote.rmi.RMIConnector;
+import javax.management.remote.rmi.RMIServer;
+import javax.rmi.ssl.SslRMIClientSocketFactory;
+import javax.swing.event.SwingPropertyChangeSupport;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.io.IOException;
+import java.lang.management.*;
+import java.lang.ref.WeakReference;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.rmi.NotBoundException;
+import java.rmi.Remote;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+import java.rmi.server.RMIClientSocketFactory;
+import java.rmi.server.RemoteObject;
+import java.rmi.server.RemoteObjectInvocationHandler;
+import java.rmi.server.RemoteRef;
+import java.util.*;
+
+import static java.lang.management.ManagementFactory.*;
 
 public class ProxyClient implements JConsoleContext {
 
@@ -383,6 +396,8 @@ public class ProxyClient implements JConsoleContext {
         }
     }
 
+    public String key;
+
     /**
      * Gets a proxy client for a given local virtual machine.
      */
@@ -394,6 +409,7 @@ public class ProxyClient implements JConsoleContext {
             proxyClient = new ProxyClient(lvm);
             cache.put(key, proxyClient);
         }
+        proxyClient.key = key;
         return proxyClient;
     }
 
@@ -448,6 +464,7 @@ public class ProxyClient implements JConsoleContext {
             proxyClient = new ProxyClient(hostName, port, userName, password);
             cache.put(key, proxyClient);
         }
+        proxyClient.key = key;
         return proxyClient;
     }
 
@@ -463,9 +480,9 @@ public class ProxyClient implements JConsoleContext {
 
     private static String getCacheKey(String hostName, int port,
                                       String userName, String password) {
-        return (hostName == null ? "" : hostName) + ":" +
-            port + ":" +
-            (userName == null ? "" : userName) + ":" +
+        return (hostName == null ? "" : hostName) + "_" +
+            port + "_" +
+            (userName == null ? "" : userName) + "_" +
             (password == null ? "" : password);
     }
 

@@ -11,7 +11,7 @@ import java.util.List;
 public class VMDetail {
     private String mainClass;
 
-    private String[] vmArgs;
+    private List<String> vmArgs;
 
     private String[] classPaths;
 
