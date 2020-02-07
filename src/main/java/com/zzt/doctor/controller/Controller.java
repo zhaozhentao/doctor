@@ -1,11 +1,15 @@
 package com.zzt.doctor.controller;
 
 import cn.hutool.core.io.IoUtil;
+import com.sun.management.HotSpotDiagnosticMXBean;
 import com.sun.management.OperatingSystemMXBean;
 import com.sun.tools.attach.AgentInitializationException;
 import com.sun.tools.attach.AgentLoadException;
 import com.sun.tools.attach.AttachNotSupportedException;
 import com.sun.tools.attach.VirtualMachine;
+import com.sun.tools.hat.internal.model.JavaClass;
+import com.sun.tools.hat.internal.model.Snapshot;
+import com.sun.tools.hat.internal.parser.Reader;
 import com.sun.tools.jconsole.JConsoleContext;
 import com.zzt.doctor.entity.*;
 import com.zzt.doctor.helper.VmConnector;
@@ -22,12 +26,10 @@ import javax.management.openmbean.CompositeData;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.lang.management.*;
 import java.net.URISyntaxException;
+import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -287,34 +289,68 @@ public class Controller {
         return deadLocks;
     }
 
+    protected String encodeForURL(JavaClass clazz) {
+        if (clazz.getId() == -1) {
+            return encodeForURL(clazz.getName());
+        } else {
+            return clazz.getIdString();
+        }
+    }
+
+    protected String printClass(JavaClass clazz) {
+        if (clazz == null) {
+            return null;
+        }
+
+        return encodeForURL(clazz);
+    }
+
+
+    protected String encodeForURL(String s) {
+        try {
+            s = URLEncoder.encode(s, "UTF-8");
+        } catch (UnsupportedEncodingException ex) {
+            // Should never happen
+            ex.printStackTrace();
+        }
+        return s;
+    }
+
     @GetMapping("/jvms/{id}/objects")
     public Object objects(@PathVariable("id") String pid) throws AttachNotSupportedException, IOException {
-        VirtualMachine vm = VirtualMachine.attach(String.valueOf(pid));
+        ProxyClient client = getProxyClient(pid);
+        HotSpotDiagnosticMXBean hotSpotDiagnosticMXBean = client.getHotSpotDiagnosticMXBean();
 
-        InputStream inputStream = ((HotSpotVirtualMachine) vm).heapHisto("-all");
-        BufferedReader reader = IoUtil.getReader(inputStream, "UTF-8");
+        String filePath =  client.key + ".hprof";
+        File dumpFile = new File(filePath);
 
-        Matcher matcher = PATTERN.matcher("");
-        StringBuilder total = new StringBuilder();
+        hotSpotDiagnosticMXBean.dumpHeap(dumpFile.getAbsolutePath(), false);
+        Snapshot snapshot = Reader.readFile(dumpFile.getAbsolutePath(), true, 0);
+        snapshot.resolve(true);
+        JavaClass[] classes = snapshot.getClassesArray();
+
+        int totalInstanceCount = 0, totalInstanceSize = 0;
 
         ArrayList<HistogramBean> list = new ArrayList<>();
-        reader.lines().forEach(line -> {
-            HistogramBean bean = parseHistogramBean(matcher, line);
-            if (bean != null) {
-                list.add(bean);
-                return;
-            }
+        for (JavaClass aClass : classes) {
+            HistogramBean bean = new HistogramBean();
+            bean.setClassName(aClass.getName());
 
-            if (line.contains("Total")) {
-                total.append(line);
-            }
-        });
+            int instanceCount = aClass.getInstancesCount(false);
+            totalInstanceCount += instanceCount;
 
-        reader.close();
-        inputStream.close();
-        vm.detach();
+            long instanceSize = aClass.getTotalInstanceSize();
+            totalInstanceSize += instanceSize;
+            bean.setCount(instanceCount);
+            bean.setBytes(instanceSize);
 
-        return new ObjectsInfo(total.toString(), list);
+            list.add(bean);
+        }
+
+        dumpFile.delete();
+        client.flush();
+
+        return new ObjectsInfo(totalInstanceCount, totalInstanceSize, list);
     }
 
     @DeleteMapping("/jvms/{id}")
@@ -363,17 +399,6 @@ public class Controller {
         cpuInfo.setUpTime(upTime);
 
         return cpuUsage;
-    }
-
-    private static final Pattern PATTERN = Pattern.compile("\\s*(\\d+):{1}\\s+(\\d+)\\s+(\\d+)\\s+(.+)");
-
-    private HistogramBean parseHistogramBean(Matcher matcher, String line) {
-        matcher.reset(line);
-        if (matcher.matches()) {
-            return new HistogramBean(matcher.group(1), matcher.group(2), matcher.group(3), matcher.group(4));
-        }
-
-        return null;
     }
 
     public Long[][] getDeadlockedThreadIds(ProxyClient proxyClient, ThreadMXBean threadMBean) throws IOException {
@@ -463,51 +488,5 @@ public class Controller {
         }
     }
 
-    private String getLocalConnectorAddress(VirtualMachine vm) throws IOException {
-        // 1. 检查smartAgent是否已启动
-        Properties agentProps = vm.getAgentProperties();
-        String address = (String) agentProps.get(LOCAL_CONNECTOR_ADDRESS_PROP);
-
-        if (address != null) {
-            return address;
-        }
-
-        // 2. 未启动，尝试启动
-        // JDK8后有更直接的vm.startLocalManagementAgent()方法
-        String home = vm.getSystemProperties().getProperty("java.home");
-
-        // Normally in ${java.home}/jre/lib/management-agent.jar but might
-        // be in ${java.home}/lib in build environments.
-
-        String agentPath = home + File.separator + "jre" + File.separator + "lib" + File.separator
-            + "management-agent.jar";
-        File f = new File(agentPath);
-        if (!f.exists()) {
-            agentPath = home + File.separator + "lib" + File.separator + "management-agent.jar";
-            f = new File(agentPath);
-            if (!f.exists()) {
-                throw new IOException("Management agent not found");
-            }
-        }
-
-        agentPath = f.getCanonicalPath();
-        try {
-            vm.loadAgent(agentPath, "com.sun.management.jmxremote");
-        } catch (AgentLoadException | AgentInitializationException x) {
-            IOException ioe = new IOException(x.getMessage());
-            ioe.initCause(x);
-            throw ioe;
-        }
-
-        // 3. 再次获取connector address
-        agentProps = vm.getAgentProperties();
-        address = (String) agentProps.get(LOCAL_CONNECTOR_ADDRESS_PROP);
-
-        if (address == null) {
-            throw new IOException("Fails to find connector address");
-        }
-
-        return address;
-    }
 }
 
