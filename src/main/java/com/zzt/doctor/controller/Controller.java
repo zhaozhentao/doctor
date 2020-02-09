@@ -1,39 +1,28 @@
 package com.zzt.doctor.controller;
 
-import cn.hutool.core.io.IoUtil;
 import com.sun.management.HotSpotDiagnosticMXBean;
 import com.sun.management.OperatingSystemMXBean;
-import com.sun.tools.attach.AgentInitializationException;
-import com.sun.tools.attach.AgentLoadException;
-import com.sun.tools.attach.AttachNotSupportedException;
-import com.sun.tools.attach.VirtualMachine;
 import com.sun.tools.hat.internal.model.JavaClass;
 import com.sun.tools.hat.internal.model.Snapshot;
 import com.sun.tools.hat.internal.parser.Reader;
 import com.sun.tools.jconsole.JConsoleContext;
 import com.zzt.doctor.entity.*;
-import com.zzt.doctor.helper.VmConnector;
 import com.zzt.doctor.vm.ProxyClient;
 import org.springframework.web.bind.annotation.*;
-import sun.jvmstat.monitor.*;
-import sun.tools.attach.HotSpotVirtualMachine;
 import sun.tools.jconsole.LocalVirtualMachine;
 import sun.tools.jconsole.Messages;
 import sun.tools.jconsole.Resources;
 
-import javax.management.*;
+import javax.management.Attribute;
+import javax.management.AttributeList;
+import javax.management.MBeanInfo;
+import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
-import javax.management.remote.JMXConnector;
-import javax.management.remote.JMXConnectorFactory;
-import javax.management.remote.JMXServiceURL;
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.lang.management.*;
-import java.net.URISyntaxException;
-import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -43,8 +32,6 @@ import java.util.stream.Stream;
 @RestController
 @RequestMapping("/api")
 public class Controller {
-
-    private static final String LOCAL_CONNECTOR_ADDRESS_PROP = "com.sun.management.jmxremote.localConnectorAddress";
 
     private float KB = 1000;
 
@@ -289,35 +276,8 @@ public class Controller {
         return deadLocks;
     }
 
-    protected String encodeForURL(JavaClass clazz) {
-        if (clazz.getId() == -1) {
-            return encodeForURL(clazz.getName());
-        } else {
-            return clazz.getIdString();
-        }
-    }
-
-    protected String printClass(JavaClass clazz) {
-        if (clazz == null) {
-            return null;
-        }
-
-        return encodeForURL(clazz);
-    }
-
-
-    protected String encodeForURL(String s) {
-        try {
-            s = URLEncoder.encode(s, "UTF-8");
-        } catch (UnsupportedEncodingException ex) {
-            // Should never happen
-            ex.printStackTrace();
-        }
-        return s;
-    }
-
     @GetMapping("/jvms/{id}/objects")
-    public Object objects(@PathVariable("id") String pid) throws AttachNotSupportedException, IOException {
+    public Object objects(@PathVariable("id") String pid) throws IOException {
         ProxyClient client = getProxyClient(pid);
         HotSpotDiagnosticMXBean hotSpotDiagnosticMXBean = client.getHotSpotDiagnosticMXBean();
 
@@ -354,7 +314,7 @@ public class Controller {
     }
 
     @DeleteMapping("/jvms/{id}")
-    public void disConnect(@PathVariable("id") String pid) throws IOException {
+    public void disConnect(@PathVariable("id") String pid) {
         ProxyClient client = getProxyClient(pid);
 
         client.disconnect();
@@ -408,8 +368,8 @@ public class Controller {
         }
         ThreadInfo[] infos = threadMBean.getThreadInfo(ids, Integer.MAX_VALUE);
 
-        List<Long[]> dcycles = new ArrayList<Long[]>();
-        List<Long> cycle = new ArrayList<Long>();
+        List<Long[]> dcycles = new ArrayList<>();
+        List<Long> cycle = new ArrayList<>();
 
         // keep track of which thread is visited
         // one thread can only be in one cycle
@@ -487,6 +447,5 @@ public class Controller {
             client.connect(false);
         }
     }
-
 }
 
