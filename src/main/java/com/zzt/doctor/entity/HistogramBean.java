@@ -8,6 +8,7 @@ import lombok.Data;
 @Data
 public class HistogramBean {
 
+    private String idString;
     private int num;
     private int count;
     private long bytes;

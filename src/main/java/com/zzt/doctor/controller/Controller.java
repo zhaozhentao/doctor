@@ -1,11 +1,10 @@
 package com.zzt.doctor.controller;
 
-import com.sun.management.HotSpotDiagnosticMXBean;
 import com.sun.management.OperatingSystemMXBean;
 import com.sun.tools.hat.internal.model.JavaClass;
 import com.sun.tools.hat.internal.model.Snapshot;
-import com.sun.tools.hat.internal.parser.Reader;
 import com.sun.tools.jconsole.JConsoleContext;
+import com.zzt.doctor.cache.SnapshotCache;
 import com.zzt.doctor.entity.*;
 import com.zzt.doctor.vm.ProxyClient;
 import org.springframework.web.bind.annotation.*;
@@ -13,12 +12,12 @@ import sun.tools.jconsole.LocalVirtualMachine;
 import sun.tools.jconsole.Messages;
 import sun.tools.jconsole.Resources;
 
+import javax.annotation.Resource;
 import javax.management.Attribute;
 import javax.management.AttributeList;
 import javax.management.MBeanInfo;
 import javax.management.ObjectName;
 import javax.management.openmbean.CompositeData;
-import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.util.*;
@@ -36,6 +35,9 @@ public class Controller {
     private float KB = 1000;
 
     private ConcurrentHashMap<String, CpuInfo> map = new ConcurrentHashMap<>();
+
+    @Resource
+    private SnapshotCache snapshotCache;
 
     @GetMapping("/jvms")
     public Object main() {
@@ -276,17 +278,11 @@ public class Controller {
         return deadLocks;
     }
 
-    @GetMapping("/jvms/{id}/objects")
+    @GetMapping("/jvms/{id}/class")
     public Object objects(@PathVariable("id") String pid) throws IOException {
         ProxyClient client = getProxyClient(pid);
-        HotSpotDiagnosticMXBean hotSpotDiagnosticMXBean = client.getHotSpotDiagnosticMXBean();
+        Snapshot snapshot = snapshotCache.get(client);
 
-        String filePath =  client.key + ".hprof";
-        File dumpFile = new File(filePath);
-
-        hotSpotDiagnosticMXBean.dumpHeap(dumpFile.getAbsolutePath(), false);
-        Snapshot snapshot = Reader.readFile(dumpFile.getAbsolutePath(), true, 0);
-        snapshot.resolve(true);
         JavaClass[] classes = snapshot.getClassesArray();
 
         int totalInstanceCount = 0, totalInstanceSize = 0;
@@ -303,14 +299,24 @@ public class Controller {
             totalInstanceSize += instanceSize;
             bean.setCount(instanceCount);
             bean.setBytes(instanceSize);
+            bean.setIdString(aClass.getIdString());
 
             list.add(bean);
         }
 
-        dumpFile.delete();
         client.flush();
 
         return new ObjectsInfo(totalInstanceCount, totalInstanceSize, list);
+    }
+
+    @GetMapping("/jvms/{pid}/class/{classId}")
+    public Object objectDetail(@PathVariable("pid") String pid, @PathVariable("classId") String classId) throws IOException {
+        ProxyClient client = getProxyClient(pid);
+
+        Snapshot snapshot = snapshotCache.get(client);
+        JavaClass aClass = snapshot.findClass(classId);
+
+        return new ObjectDetail(aClass);
     }
 
     @DeleteMapping("/jvms/{id}")
