@@ -3,7 +3,6 @@ package com.zzt.doctor.controller;
 import com.sun.management.OperatingSystemMXBean;
 import com.sun.tools.hat.internal.model.JavaClass;
 import com.sun.tools.hat.internal.model.Snapshot;
-import com.sun.tools.jconsole.JConsoleContext;
 import com.zzt.doctor.cache.SnapshotCache;
 import com.zzt.doctor.entity.*;
 import com.zzt.doctor.vm.ProxyClient;
@@ -24,6 +23,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.zzt.doctor.helper.ProxyClientHelper.getProxyClient;
+import static com.zzt.doctor.helper.ProxyClientHelper.getRemoteClient;
 
 /**
  * @author zhaotao
@@ -316,7 +318,7 @@ public class Controller {
         Snapshot snapshot = snapshotCache.get(client);
         JavaClass aClass = snapshot.findClass(classId);
 
-        return new ObjectDetail(aClass);
+        return new ClassDetail(aClass);
     }
 
     @DeleteMapping("/jvms/{id}")
@@ -419,39 +421,6 @@ public class Controller {
             }
         }
         return dcycles.toArray(new Long[0][0]);
-    }
-
-    private ProxyClient getProxyClient(String pid) {
-        try {
-            int id = Integer.parseInt(pid);
-            return getLocalClient(id);
-        } catch (Exception e) {
-            return ProxyClient.getCache().get(pid);
-        }
-    }
-
-    private ProxyClient getLocalClient(Integer pid) throws IOException {
-        LocalVirtualMachine machine = LocalVirtualMachine.getAllVirtualMachines().values()
-            .stream()
-            .filter(m -> m.vmid() == pid)
-            .findFirst().get();
-
-        ProxyClient proxyClient = ProxyClient.getProxyClient(machine);
-        checkConnect(proxyClient);
-
-        return proxyClient;
-    }
-
-    private ProxyClient getRemoteClient(String hostName, int port, String userName, String password) throws IOException {
-        ProxyClient client = ProxyClient.getProxyClient(hostName, port, userName, password);
-        checkConnect(client);
-        return client;
-    }
-
-    private void checkConnect(ProxyClient client) {
-        if (client.getConnectionState() != JConsoleContext.ConnectionState.CONNECTED) {
-            client.connect(false);
-        }
     }
 }
 
