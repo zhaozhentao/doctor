@@ -1,5 +1,6 @@
 package com.zzt.doctor.controller;
 
+import cn.hutool.core.collection.CollUtil;
 import com.sun.tools.hat.internal.model.*;
 import com.sun.tools.hat.internal.util.ArraySorter;
 import com.sun.tools.hat.internal.util.Comparer;
@@ -18,6 +19,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 
@@ -130,7 +132,7 @@ public class ObjectsController {
 //            out.println("Include subclasses</a><br>");
 //        }
 
-        result.put("referencesToThisObject", referencesTo(clazz, snapshot));
+        result.put("referencesTo", referencesTo(clazz, snapshot));
 
         return result;
     }
@@ -194,14 +196,11 @@ public class ObjectsController {
     }
 
     protected Object referencesTo(JavaHeapObject obj, Snapshot snapshot) {
-        HashMap<String, Object> result = new HashMap<>();
-
         if (obj.getId() == -1) {
-            return result;
+            return Collections.emptyList();
         }
 
         ArrayList<Object> referencesToThisObject = new ArrayList<>();
-        result.put("referencesToThisObject", referencesToThisObject);
         Enumeration referers = obj.getReferers();
         while (referers.hasMoreElements()) {
             HashMap<String, Object> item = new HashMap<>(4);
@@ -237,7 +236,7 @@ public class ObjectsController {
 //        out.print("\">");
 //        out.println("Objects reachable from here</a><br>");
 
-        return result;
+        return referencesToThisObject;
     }
 
     protected Object thingDetail(JavaThing thing, Snapshot snapshot) {
