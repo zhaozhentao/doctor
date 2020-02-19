@@ -43,4 +43,8 @@ public class SnapshotCache {
         map.put(client.key, snapshot);
         return snapshot;
     }
+
+    public void remove(String key) {
+        map.remove(key);
+    }
 }

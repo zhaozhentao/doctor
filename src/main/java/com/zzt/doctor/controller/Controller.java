@@ -326,6 +326,8 @@ public class Controller {
         ProxyClient client = getProxyClient(pid);
 
         client.disconnect();
+
+        snapshotCache.remove(client.key);
     }
 
     @PostMapping("/jvms")
