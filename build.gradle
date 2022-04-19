@@ -1,36 +1,26 @@
 plugins {
-    id 'org.springframework.boot' version '2.2.4.RELEASE'
-    id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+    id 'org.springframework.boot' version '2.6.6'
+    id 'io.spring.dependency-management' version '1.0.11.RELEASE'
     id 'java'
 }
 
 group = 'com.zzt'
 version = '0.0.1-SNAPSHOT'
-
 sourceCompatibility = 1.8
-targetCompatibility = 1.8
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    compile("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-web")
 
-    compile files("${System.properties['java.home']}/../lib/tools.jar")
-    compile files("${System.properties['java.home']}/../lib/jconsole.jar")
-    compile group: 'com.vip.vjtools', name: 'vjtools', version: '1.0.8', ext: 'pom'
-    compile group: 'com.vip.vjtools', name: 'vjtop', version: '1.0.8'
-    compile 'cn.hutool:hutool-all:4.1.13'
+    implementation fileTree("${System.properties['java.home']}/../lib/tools.jar")
+    implementation fileTree("${System.properties['java.home']}/../lib/jconsole.jar")
+    implementation group: 'com.vip.vjtools', name: 'vjtools', version: '1.0.8', ext: 'pom'
+    implementation group: 'com.vip.vjtools', name: 'vjtop', version: '1.0.8'
+    implementation 'cn.hutool:hutool-all:5.7.22'
 
-    compileOnly 'org.projectlombok:lombok:1.18.10'
-    annotationProcessor 'org.projectlombok:lombok:1.18.10'
-
-    testImplementation('org.springframework.boot:spring-boot-starter-test') {
-        exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
-    }
-}
-
-test {
-    useJUnitPlatform()
+    compileOnly 'org.projectlombok:lombok:1.18.22'
+    annotationProcessor 'org.projectlombok:lombok:1.18.22'
 }
