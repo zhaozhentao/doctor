@@ -15,8 +15,8 @@ repositories {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
 
-    implementation fileTree("${System.properties['java.home']}/../lib/tools.jar")
-    implementation fileTree("${System.properties['java.home']}/../lib/jconsole.jar")
+    implementation files("${System.properties['java.home']}/../lib/tools.jar")
+    implementation files("${System.properties['java.home']}/../lib/jconsole.jar")
     implementation group: 'com.vip.vjtools', name: 'vjtools', version: '1.0.8', ext: 'pom'
     implementation group: 'com.vip.vjtools', name: 'vjtop', version: '1.0.8'
     implementation 'cn.hutool:hutool-all:5.7.22'
