@@ -34,9 +34,9 @@ import static com.zzt.doctor.helper.ProxyClientHelper.getRemoteClient;
 @RequestMapping("/api")
 public class Controller {
 
-    private float KB = 1000;
+    private final float KB = 1000;
 
-    private ConcurrentHashMap<String, CpuInfo> map = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CpuInfo> map = new ConcurrentHashMap<>();
 
     @Resource
     private SnapshotCache snapshotCache;

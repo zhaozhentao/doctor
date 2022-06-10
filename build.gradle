@@ -21,6 +21,6 @@ dependencies {
     implementation group: 'com.vip.vjtools', name: 'vjtop', version: '1.0.8'
     implementation 'cn.hutool:hutool-all:5.8.1'
 
-    compileOnly 'org.projectlombok:lombok:1.18.22'
+    compileOnly 'org.projectlombok:lombok:1.18.24'
     annotationProcessor 'org.projectlombok:lombok:1.18.24'
 }

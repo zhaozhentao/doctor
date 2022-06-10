@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class SnapshotCache {
 
-    private ConcurrentHashMap<String, Snapshot> map = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Snapshot> map = new ConcurrentHashMap<>();
 
     public Snapshot get(ProxyClient client) throws IOException {
         Snapshot cache = map.get(client.key);
