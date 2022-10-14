@@ -1,5 +1,5 @@
 plugins {
-    id 'org.springframework.boot' version '2.7.0'
+    id 'org.springframework.boot' version '2.7.4'
     id 'io.spring.dependency-management' version '1.0.11.RELEASE'
     id 'java'
 }
@@ -19,7 +19,7 @@ dependencies {
     implementation files("${System.properties['java.home']}/../lib/jconsole.jar")
     implementation group: 'com.vip.vjtools', name: 'vjtools', version: '1.0.8', ext: 'pom'
     implementation group: 'com.vip.vjtools', name: 'vjtop', version: '1.0.8'
-    implementation 'cn.hutool:hutool-all:5.8.1'
+    implementation 'cn.hutool:hutool-all:5.8.8'
 
     compileOnly 'org.projectlombok:lombok:1.18.24'
     annotationProcessor 'org.projectlombok:lombok:1.18.24'
